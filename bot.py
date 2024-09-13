@@ -2,26 +2,27 @@ import os
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
-from pymongo import MongoClient
+import pymongo
+from datetime import datetime, timezone
+import asyncio
 import random
-from datetime import datetime, timedelta
-
+import traceback
 
 # Load environment variables
 load_dotenv()
 DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
 MONGODB_URI = os.getenv('MONGODB_URI')
 
-# Set up Discord bot
-intents = discord.Intents.default()
-intents.message_content = True
-bot = commands.Bot(command_prefix='!', intents=intents)
-
-# Connect to MongoDB
-client = MongoClient(MONGODB_URI)
+# Set up MongoDB connection
+client = pymongo.MongoClient(MONGODB_URI)
 db = client['ai_or_human_game']
 users_collection = db['users']
 prompts_collection = db['prompts']
+
+# Set up Discord bot
+intents = discord.Intents.default()
+intents.message_content = True
+bot = commands.Bot(command_prefix='ai!', intents=intents)
 
 @bot.event
 async def on_ready():
@@ -29,9 +30,10 @@ async def on_ready():
 
 @bot.command()
 async def ping(ctx):
+    """A simple command to check if the bot is responsive."""
     await ctx.send('Pong!')
 
-
+# Helper function to get or create a user
 async def get_or_create_user(user_id, username):
     user = users_collection.find_one({"user_id": str(user_id)})
     if not user:
@@ -40,7 +42,7 @@ async def get_or_create_user(user_id, username):
             "username": username,
             "points": 0,
             "daily_guesses": 0,
-            "last_guess_date": datetime.utcnow()
+            "last_guess_date": datetime.now(timezone.utc)
         }
         users_collection.insert_one(user)
     return user
@@ -48,10 +50,11 @@ async def get_or_create_user(user_id, username):
 # Command to play the guessing game
 @bot.command()
 async def play(ctx):
+    """Starts the AI or Human guessing game. You'll be presented with a prompt and need to guess if it was written by an AI or a human."""
     user = await get_or_create_user(ctx.author.id, ctx.author.name)
     
     # Check if the user has reached their daily limit
-    today = datetime.utcnow().date()
+    today = datetime.now(timezone.utc).date()
     if user['last_guess_date'].date() < today:
         user['daily_guesses'] = 0
     
@@ -60,8 +63,12 @@ async def play(ctx):
         return
 
     # Get a random prompt
-    prompt = prompts_collection.aggregate([{ "$sample": { "size": 1 } }]).next()
-    
+    try:
+        prompt = prompts_collection.aggregate([{ "$sample": { "size": 1 } }]).next()
+    except StopIteration:
+        await ctx.send("Sorry, there are no prompts available. Please add some prompts using the !submit command.")
+        return
+
     await ctx.send(f"Prompt: {prompt['prompt']}\n\nAnswer: {prompt['answer']}\n\nIs this answer from AI or Human? Reply with 'AI' or 'Human'.")
 
     def check(m):
@@ -77,26 +84,28 @@ async def play(ctx):
             users_collection.update_one(
                 {"user_id": str(ctx.author.id)},
                 {"$inc": {"points": 1, "daily_guesses": 1},
-                 "$set": {"last_guess_date": datetime.utcnow()}}
+                 "$set": {"last_guess_date": datetime.now(timezone.utc)}}
             )
             await ctx.send("Correct! You earned 1 point.")
         else:
             users_collection.update_one(
                 {"user_id": str(ctx.author.id)},
                 {"$inc": {"daily_guesses": 1},
-                 "$set": {"last_guess_date": datetime.utcnow()}}
+                 "$set": {"last_guess_date": datetime.now(timezone.utc)}}
             )
             await ctx.send("Sorry, that's incorrect. No points earned.")
 
 # Command to check user's points
 @bot.command()
 async def points(ctx):
+    """Checks your current point total. You earn points for correct guesses in the game."""
     user = await get_or_create_user(ctx.author.id, ctx.author.name)
     await ctx.send(f"You have {user['points']} points.")
 
 # Command to submit a new prompt
 @bot.command()
 async def submit(ctx, *, prompt):
+    """Allows you to submit a new prompt and answer for the game. Your submission will be reviewed before being added to the game."""
     await ctx.send("Please provide a 3-4 sentence answer to your prompt.")
     
     def check(m):
@@ -116,6 +125,81 @@ async def submit(ctx, *, prompt):
         prompts_collection.insert_one(new_prompt)
         await ctx.send("Your prompt and answer have been submitted. If it fools other players, you'll earn 3 points!")
 
+# Command to manually add prompts (owner only)
+@bot.command()
+@commands.is_owner()
+async def addprompt(ctx, *, content):
+    """(Bot Owner Only) Allows manual addition of prompts to the database."""
+    try:
+        prompt, answer, is_ai = content.split('|')
+        new_prompt = {
+            "prompt": prompt.strip(),
+            "answer": answer.strip(),
+            "is_ai": is_ai.strip().lower() == 'true',
+            "created_by": None
+        }
+        prompts_collection.insert_one(new_prompt)
+        await ctx.send("Prompt added successfully!")
+    except ValueError:
+        await ctx.send("Invalid format. Use: !addprompt prompt | answer | is_ai")
 
 # Run the bot
-bot.run(DISCORD_TOKEN)
+try:
+    bot.run(DISCORD_TOKEN)
+except Exception as e:
+    print(f"Error: {e}")
+    traceback.print_exc()
+#
+#
+# @bot.command(name='help')
+# async def help_command(ctx):
+#     help_embed = discord.Embed(title="AI or Human Bot Help", 
+#                                description="Here are the available commands:", 
+#                                color=discord.Color.blue())
+#
+#     help_embed.add_field(name="ai!play", 
+#                          value="Starts the AI or Human guessing game. You'll be presented with a prompt and need to guess if it was written by an AI or a human.", 
+#                          inline=False)
+#
+#     help_embed.add_field(name="ai!points", 
+#                          value="Checks your current point total. You earn points for correct guesses in the game.", 
+#                          inline=False)
+#
+#     help_embed.add_field(name="ai!submit", 
+#                          value="Allows you to submit a new prompt and answer for the game. Your submission will be reviewed before being added to the game.", 
+#                          inline=False)
+#
+#     help_embed.add_field(name="ai!ping", 
+#                          value="A simple command to check if the bot is responsive.", 
+#                          inline=False)
+#
+#     help_embed.add_field(name="ai!help", 
+#                          value="Shows this help message with explanations of all available commands.", 
+#                          inline=False)
+#
+#     if await bot.is_owner(ctx.author):
+#         help_embed.add_field(name="ai!addprompt", 
+#                              value="(Bot Owner Only) Allows manual addition of prompts to the database.", 
+#                              inline=False)
+#
+#     await ctx.send(embed=help_embed)
+
+@bot.remove_command('help')
+@bot.command(name='help')
+async def help_command(ctx):
+    """Shows this help message with explanations of all available commands."""
+    help_embed = discord.Embed(title="AI or Human Bot Help", 
+                               description="Here are the available commands:", 
+                               color=discord.Color.blue())
+
+    for command in bot.commands:
+        if command.hidden:
+            continue
+        name = f"`ai!{command.name}`"
+        value = command.help or "No description available."
+        # Truncate the value if it's too long
+        if len(value) > 1024:
+            value = value[:1021] + "..."
+        help_embed.add_field(name=name, value=value, inline=False)
+
+    await ctx.send(embed=help_embed)

@@ -24,6 +24,9 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix='ai!', intents=intents)
 
+# Remove the default help command
+bot.remove_command('help')
+
 @bot.event
 async def on_ready():
     print(f'{bot.user} has connected to Discord!')
@@ -47,7 +50,6 @@ async def get_or_create_user(user_id, username):
         users_collection.insert_one(user)
     return user
 
-# Command to play the guessing game
 @bot.command()
 async def play(ctx):
     """Starts the AI or Human guessing game. You'll be presented with a prompt and need to guess if it was written by an AI or a human."""
@@ -95,14 +97,12 @@ async def play(ctx):
             )
             await ctx.send("Sorry, that's incorrect. No points earned.")
 
-# Command to check user's points
 @bot.command()
 async def points(ctx):
     """Checks your current point total. You earn points for correct guesses in the game."""
     user = await get_or_create_user(ctx.author.id, ctx.author.name)
     await ctx.send(f"You have {user['points']} points.")
 
-# Command to submit a new prompt
 @bot.command()
 async def submit(ctx, *, prompt):
     """Allows you to submit a new prompt and answer for the game. Your submission will be reviewed before being added to the game."""
@@ -125,7 +125,6 @@ async def submit(ctx, *, prompt):
         prompts_collection.insert_one(new_prompt)
         await ctx.send("Your prompt and answer have been submitted. If it fools other players, you'll earn 3 points!")
 
-# Command to manually add prompts (owner only)
 @bot.command()
 @commands.is_owner()
 async def addprompt(ctx, *, content):
@@ -143,48 +142,6 @@ async def addprompt(ctx, *, content):
     except ValueError:
         await ctx.send("Invalid format. Use: !addprompt prompt | answer | is_ai")
 
-# Run the bot
-try:
-    bot.run(DISCORD_TOKEN)
-except Exception as e:
-    print(f"Error: {e}")
-    traceback.print_exc()
-#
-#
-# @bot.command(name='help')
-# async def help_command(ctx):
-#     help_embed = discord.Embed(title="AI or Human Bot Help", 
-#                                description="Here are the available commands:", 
-#                                color=discord.Color.blue())
-#
-#     help_embed.add_field(name="ai!play", 
-#                          value="Starts the AI or Human guessing game. You'll be presented with a prompt and need to guess if it was written by an AI or a human.", 
-#                          inline=False)
-#
-#     help_embed.add_field(name="ai!points", 
-#                          value="Checks your current point total. You earn points for correct guesses in the game.", 
-#                          inline=False)
-#
-#     help_embed.add_field(name="ai!submit", 
-#                          value="Allows you to submit a new prompt and answer for the game. Your submission will be reviewed before being added to the game.", 
-#                          inline=False)
-#
-#     help_embed.add_field(name="ai!ping", 
-#                          value="A simple command to check if the bot is responsive.", 
-#                          inline=False)
-#
-#     help_embed.add_field(name="ai!help", 
-#                          value="Shows this help message with explanations of all available commands.", 
-#                          inline=False)
-#
-#     if await bot.is_owner(ctx.author):
-#         help_embed.add_field(name="ai!addprompt", 
-#                              value="(Bot Owner Only) Allows manual addition of prompts to the database.", 
-#                              inline=False)
-#
-#     await ctx.send(embed=help_embed)
-
-@bot.remove_command('help')
 @bot.command(name='help')
 async def help_command(ctx):
     """Shows this help message with explanations of all available commands."""
@@ -203,3 +160,10 @@ async def help_command(ctx):
         help_embed.add_field(name=name, value=value, inline=False)
 
     await ctx.send(embed=help_embed)
+
+# Run the bot
+try:
+    bot.run(DISCORD_TOKEN)
+except Exception as e:
+    print(f"Error: {e}")
+    traceback.print_exc()

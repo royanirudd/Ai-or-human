@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import asyncio
 import random
 import traceback
+from bson.son import SON
 
 # Load environment variables
 load_dotenv()
@@ -160,6 +161,62 @@ async def help_command(ctx):
         help_embed.add_field(name=name, value=value, inline=False)
 
     await ctx.send(embed=help_embed)
+
+@bot.command()
+async def leaderboard(ctx):
+    """Displays the local leaderboard of the top 5 people in this server."""
+    guild_members = ctx.guild.members
+    guild_member_ids = [str(member.id) for member in guild_members]
+    
+    top_users = users_collection.find(
+        {"user_id": {"$in": guild_member_ids}},
+        {"user_id": 1, "username": 1, "points": 1}
+    ).sort("points", -1).limit(5)
+    
+    embed = discord.Embed(title="Local Leaderboard", color=discord.Color.gold())
+    for i, user in enumerate(top_users, 1):
+        embed.add_field(name=f"{i}. {user['username']}", value=f"{user['points']} points", inline=False)
+    
+    await ctx.send(embed=embed)
+
+@bot.command()
+async def globalboard(ctx):
+    """Displays the global leaderboard of the top 30 players."""
+    top_users = users_collection.find(
+        {},
+        {"user_id": 1, "username": 1, "points": 1}
+    ).sort("points", -1).limit(30)
+    
+    embed = discord.Embed(title="Global Leaderboard", color=discord.Color.gold())
+    for i, user in enumerate(top_users, 1):
+        embed.add_field(name=f"{i}. {user['username']}", value=f"{user['points']} points", inline=False)
+    
+    await ctx.send(embed=embed)
+
+@bot.command()
+async def rank(ctx):
+    """Displays your local (if on a server) and global ranking."""
+    user = await get_or_create_user(ctx.author.id, ctx.author.name)
+    
+    # Global ranking
+    global_rank = users_collection.count_documents({"points": {"$gt": user['points']}}) + 1
+    
+    embed = discord.Embed(title=f"Rank for {ctx.author.name}", color=discord.Color.blue())
+    embed.add_field(name="Global Rank", value=f"{global_rank}", inline=False)
+    embed.add_field(name="Total Points", value=f"{user['points']}", inline=False)
+    
+    # Local ranking (if in a server)
+    if ctx.guild:
+        guild_members = ctx.guild.members
+        guild_member_ids = [str(member.id) for member in guild_members]
+        
+        local_rank = users_collection.count_documents(
+            {"user_id": {"$in": guild_member_ids}, "points": {"$gt": user['points']}}
+        ) + 1
+        
+        embed.add_field(name="Local Rank", value=f"{local_rank}", inline=False)
+    
+    await ctx.send(embed=embed)
 
 # Run the bot
 try:

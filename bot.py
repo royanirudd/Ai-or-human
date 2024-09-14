@@ -107,15 +107,21 @@ async def points(ctx):
 @bot.command()
 async def submit(ctx, *, prompt):
     """Allows you to submit a new prompt and answer for the game. Your submission will be reviewed before being added to the game."""
-    await ctx.send("Please provide a 3-4 sentence answer to your prompt.")
+    # Delete the user's message containing the prompt
+    await ctx.message.delete()
+
+    # Send an ephemeral message asking for the answer
+    await ctx.send("Please provide a 3-4 sentence answer to your prompt. Your response will be kept private.", ephemeral=True)
     
     def check(m):
         return m.author == ctx.author and m.channel == ctx.channel
 
     try:
         msg = await bot.wait_for('message', check=check, timeout=300.0)
+        # Immediately delete the user's answer message
+        await msg.delete()
     except asyncio.TimeoutError:
-        await ctx.send("Sorry, you didn't reply in time!")
+        await ctx.send("Sorry, you didn't reply in time!", ephemeral=True)
     else:
         new_prompt = {
             "prompt": prompt,
@@ -124,7 +130,7 @@ async def submit(ctx, *, prompt):
             "created_by": str(ctx.author.id)
         }
         prompts_collection.insert_one(new_prompt)
-        await ctx.send("Your prompt and answer have been submitted. If it fools other players, you'll earn 3 points!")
+        await ctx.send("Your prompt and answer have been submitted privately. If it fools other players, you'll earn 3 points!", ephemeral=True)
 
 @bot.command()
 @commands.is_owner()

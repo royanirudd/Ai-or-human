@@ -18,7 +18,6 @@ A Discord bot built with Python to enhance server functionality and user engagem
 - Custom event listeners
 - Moderation tools (kick, ban, mute)
 - Fun commands (jokes, memes, trivia)
-- Music playback functionality
 - Scheduled tasks and reminders
 
 ## Challenges Faced
